@@ -1,0 +1,166 @@
+---
+title: "Figures-sujan"
+output: html_document
+date: "2024-07-10"
+---
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+abund = read.csv("gen-drought.csv")
+
+# Reshape the data to long format
+abund_d <- abund %>%
+  pivot_longer(
+    cols = -c(Drought_Stage, Genotype),    # Select columns after the first four factors
+    names_to = "Phylum",
+    values_to = "Abundance"
+  )
+
+total_abundance <- abund_d %>%
+  group_by(Phylum) %>%
+  summarize(Total_Abundance = sum(Abundance, na.rm = TRUE)) %>%
+  arrange(desc(Total_Abundance))
+
+# Select the top 10 microbial groups
+top_10_microbes <- total_abundance %>%
+  top_n(15, Total_Abundance) %>%
+  pull(Phylum)
+
+# Filter the data to keep only the top 20 microbial groups
+abund_d <- abund_d %>%
+  filter(Phylum %in% top_10_microbes)
+
+# Reorder Microbial_Group factor levels based on total abundance
+abund_d$Phylum <- factor(abund_d$Phylum, levels = top_10_microbes)
+
+
+# Reorder Drought_Stage factor levels
+abund_d$Drought_Stage <- factor(abund_d$Drought_Stage, levels = c("V2-Stage", "V4-Stage", "R1-Stage", "R4-Stage"))
+
+farrowAndBall_palette <- c(
+  "#4d5b6a" #Stiffkey Blue
+  ,"#6a90b4" #Cook's Blue
+  ,"#599ec4" #ST Giles Blue
+  ,"#a1c5c8" #Blue Ground
+  ,"#7997a1" #Stone Blue
+  ,"#427e83" #Vardo
+  ,"#84b59c" #Arsenic
+  ,"#919f70" #Yeabridge Green
+  ,"#686a47" #Bancha
+  ,"#c8bd83" #Churlish Green
+  ,"#cb9e59" #India Yellow
+  ,"#ecc363" #Babouche
+  ,"#c57b67" #Red Earth
+  ,"#d65f3d" #Charlotte's Locks
+  ,"#a04344" #Incarnadine
+  ,"#bf7a8f" #Rangwali
+  ,"#8d8089" #Brassica
+  ,"#50414c" #Pelt
+  ,"#e5e0db" #Strong White
+  ,"#444546" #Off-Black
+)
+
+
+# Inspect the transformed data
+head(abund)
+
+
+```
+
+```{r}
+print(head(abund_d))
+```
+## Genotype X Drought_Stage abundance
+
+```{r}
+
+# Plot the data
+abundnace_plot = ggplot(abund_d, aes(x = Drought_Stage, y = Abundance, fill = Phylum)) +
+  geom_bar(stat = "identity", position = "stack") +
+  facet_wrap(~ Genotype) +
+  theme_minimal() +
+  labs(title = "Microbial Group Abundance by Drought Stage and Genotype",
+       x = "Drought Stage",
+       y = "Abundance",
+       fill = "Phylum") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + # Adjust x-axis text for better readability
+  scale_fill_manual(values = farrowAndBall_palette)  # Apply the custom color palette
+
+abundnace_plot
+```
+
+## Drought vs control abundance
+
+```{r}
+trt = read.csv("treatment-plot.csv")
+
+# Reshape the data to long format
+trt_d <- trt %>%
+  pivot_longer(
+    cols = -c(Treatment, Genotype),    # Select columns after the first four factors
+    names_to = "Phylum",
+    values_to = "Abundance"
+  )
+
+tot_trt <- trt_d %>%
+  group_by(Phylum) %>%
+  summarize(Total_Abundance = sum(Abundance, na.rm = TRUE)) %>%
+  arrange(desc(Total_Abundance))
+
+# Select the top 10 microbial groups
+trt_d <- tot_trt %>%
+  top_n(15, Total_Abundance) %>%
+  pull(Phylum)
+
+# Filter the data to keep only the top 20 microbial groups
+trt_d <- trt_d %>%
+  filter(Phylum %in% top_10_trt)
+
+# Reorder Microbial_Group factor levels based on total abundance
+trt_d$Phylum <- factor(trt_d$Phylum, levels = top_10_trt)
+
+
+# Plot the data
+abundnace_trt = ggplot(trt_d, aes(x = Treatment, y = Abundance, fill = Phylum)) +
+  geom_bar(stat = "identity", position = "stack") +
+  facet_wrap(~ Genotype) +
+  theme_minimal() +
+  labs(title = "Microbial Group Abundance by Treatment and Genotype",
+       x = "Treatment",
+       y = "Abundance",
+       fill = "Phylum") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + # Adjust x-axis text for better readability
+  scale_fill_manual(values = farrowAndBall_palette)
+
+abundnace_trt
+```
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

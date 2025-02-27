@@ -1,0 +1,834 @@
+---
+title: "microeco-Sujan"
+output: html_document
+date: "2024-06-26"
+---
+
+```{r}
+# allow more waiting time to download each package
+options(timeout = 1000)
+# If a package is not installed, it will be installed from CRAN
+# First select the packages of interest
+tmp <- c("microeco", "mecoturn", "MASS", "GUniFrac", "ggpubr", "randomForest", "ggdendro", "ggrepel", "agricolae", "igraph", "picante", "pheatmap", "rgexf", 
+    "ggalluvial", "ggh4x", "rcompanion", "FSA", "gridExtra", "aplot", "NST", "GGally", "ggraph", "networkD3", "poweRlaw", "ggtern", "SRS", "performance")
+# Now check or install
+for(x in tmp){
+    if(!require(x, character.only = TRUE)) {
+        install.packages(x, dependencies = TRUE)
+    }
+}
+
+install.packages("BiocManager")
+install.packages("file2meco", repos = BiocManager::repositories())
+install.packages("MicrobiomeStat", repos = BiocManager::repositories())
+install.packages("WGCNA", repos = BiocManager::repositories())
+BiocManager::install("ggtree")
+BiocManager::install("metagenomeSeq")
+BiocManager::install("ALDEx2")
+BiocManager::install("ANCOMBC")
+install.packages("biomformat")
+install.packages("magrittr")
+install.packages("gg4x")
+install.packages("ggcor")
+install.packages("GGally")
+install.packages("tidygraph")
+install.packages('pak')
+pak::pak('thomasp85/tidygraph')
+# install.packages('pak')
+pak::pak('thomasp85/tidygraph')
+
+install.packages("igraph")
+
+devtools::install_github("houyunhuang/ggcor")
+
+devtools::install_github("hannet91/ggcor")
+install.packages("biomformat")
+BiocManager::install("biomformat")
+BiocManager::install("phyloseq")
+
+
+library(phyloseq)
+library(biomformat)
+library(BiocManager)
+library(file2meco)
+library(MicrobiomeStat)
+library(WGCNA)
+library(ggtree)
+library(metagenomeSeq)
+library(ALDEx2)
+library(ANCOMBC)
+library(microeco)
+library(ape)
+library(plyr)
+library(magrittr)
+library(tidygraph)
+library(ggcor)
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+library(vegan)
+
+
+`````````
+
+#Importing microbiome data into R and converting this data into microeco package
+```{r}
+biom = import_biom("sujan_16s.biom")
+
+metadata = import_qiime_sample_data("metadata.txt")
+
+tree = read_tree("rooted-tree-sujan16s.nwk")
+
+sujan_biom = merge_phyloseq(biom, metadata, tree)
+
+#rename columns in taxonomy table
+colnames(tax_table(sujan_biom)) <- c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+colnames(tax_table(sujan_biom))
+
+
+colnames(tax_table(meco_dataset)) <- c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+
+
+meco_dataset <- phyloseq2meco(sujan_biom)
+
+
+meco_dataset$tax_table
+
+
+
+```
+
+```{r}
+
+# make the taxonomic information unified, very important
+
+# make the taxonomic information unified, very important
+meco_ASV$tax_table %<>% tidy_taxonomy
+
+meco_dataset$tax_table %<>% base::subset(Domain == "d__Archaea" | Domain == "d__Bacteria")
+
+meco_dataset
+```
+## calculating diversity metrics to out data object.
+
+```{r}
+meco_ASV$cal_abund()
+meco_ASV$cal_alphadiv()
+meco_ASV$cal_betadiv()
+
+# return dataset$taxa_abund
+class(microeco_data$taxa_abund)
+
+
+# show part of the relative abundance at Phylum level
+meco_dataset$taxa_abund$Phylum[1:5, 1:5]
+```
+## the function save_abund() can be used to save the taxa abundance file to a local
+##place easily
+
+```{r}
+
+meco_dataset$save_abund(dirpath = "taxa_abund")
+
+# tab-delimited, i.e. mpa format
+meco_dataset$save_abund(merge_all = TRUE, sep = "\t", quote = FALSE)
+# remove those unclassified
+meco_dataset$save_abund(merge_all = TRUE, sep = "\t", rm_un = TRUE, rm_pattern = "__$|Sedis$", quote = FALSE)
+
+```
+
+
+
+# Measuring alpha diversity
+```{r}
+t1 <- trans_alpha$new(dataset = microeco_data, group = "Group")
+# return t1$data_stat
+head(t1$data_stat)
+```
+
+
+
+# Abundance plots
+
+```{r}
+# create trans_abund object
+# select top 8 abundant Phyla.
+
+
+t1 <- trans_abund$new(dataset = meco_dataset, taxrank = "Phylum", ntaxa = 8)
+
+t1
+# require package ggh4x, first run install.packages("ggh4x") if not installed
+t1$plot_bar(others_color = "grey70", facet = c("Genotype", "Drought_Stage"), xtext_keep = FALSE, legend_text_italic = FALSE, barwidth = 1)
+
+t1 <- trans_abund$new(dataset = meco_dataset, taxrank = "Phylum", ntaxa = 10, groupmean = "Genotype")
+
+t1 <- trans_abund$new(dataset = meco_dataset, taxrank = "Phylum", ntaxa = 10, groupmean = "Drought_Stage")
+
+t1$data_abund
+
+
+```
+
+### relationship between environmental variables and micribiome
+
+```{r}
+phyis <- read.csv("Sujan-physiology.csv")
+
+rownames(phyis) <- phyis[, 1]
+
+phyis = phyis[ ,-1]
+
+phyis_physiology <- phyis[, c(1:12)]
+
+phyis_plant <- phyis[, c(13:18)]
+
+phyis_soil = phyis[, c(19:21)]
+
+
+# add_data is used to add the environmental data
+env_sujan <- trans_env$new(dataset = meco_dataset, add_data = phyis)
+
+env_sujan_phyis <- trans_env$new(dataset = meco_dataset, add_data = phyis_physiology)
+
+env_sujan_plant <- trans_env$new(dataset = meco_dataset, add_data = phyis_plant)
+
+env_sujan_soil <- trans_env$new(dataset = meco_dataset, add_data = phyis_soil)
+
+```
+
+```{r}
+# use Wilcoxon Rank Sum Test as an example
+env_sujan$cal_diff(group = "Genotype", method = "anova")
+
+env_sujan$cal_diff(group = "Treatment", method = "wilcox")
+
+env_sujan$cal_diff(group = "Drought_Stage", method = "wilcox")
+
+head(env_sujan$res_diff)
+```
+## Auto correlation
+
+```{r}
+# require GGally package to be installed
+
+env_sujan$cal_autocor()
+
+```
+
+```{r}
+env_sujan$cal_autocor(group = "Genotype")
+```
+
+## Then let’s show the RDA analysis (db-RDA and RDA)
+
+```{r}
+# use bray-curtis distance for dbRDA
+env_sujan$cal_ordination(method = "dbRDA", use_measure = "bray")
+
+env_sujan_phyis$cal_ordination(method = "dbRDA", use_measure = "bray")
+
+env_sujan_plant$cal_ordination(method = "dbRDA", use_measure = "bray")
+
+env_sujan_soil$cal_ordination(method = "dbRDA", use_measure = "bray")
+
+# show the orginal results
+env_sujan$trans_ordination(adjust_arrow_length = TRUE, max_perc_env = 1, max_perc_tax = 1.5, min_perc_env = 0.2, min_perc_tax = 0.2)
+
+env_sujan_phyis$trans_ordination(adjust_arrow_length = TRUE, max_perc_env = 1, max_perc_tax = 1.5, min_perc_env = 0.2, min_perc_tax = 0.2)
+env_sujan_plant$trans_ordination(adjust_arrow_length = TRUE, max_perc_env = 1, max_perc_tax = 1.5, min_perc_env = 0.2, min_perc_tax = 0.2)
+env_sujan_soil$trans_ordination(adjust_arrow_length = TRUE, max_perc_env = 1, max_perc_tax = 1.5, min_perc_env = 0.2, min_perc_tax = 0.2)
+
+env_sujan$cal_ordination_anova()
+
+env_sujan_phyis$cal_ordination_anova()
+env_sujan_phyis$cal_ordination_envfit()
+
+env_sujan_plant$cal_ordination_anova()
+env_sujan_plant$cal_ordination_envfit()
+
+env_sujan_soil$cal_ordination_anova()
+env_sujan_soil$cal_ordination_envfit()
+
+soil_anova_dbrda = anova.cca (env_sujan_soil[["res_ordination"]])
+
+soil_anova_dbrda
+
+
+dbrda = env_sujan$plot_ordination(plot_color = "Genotype", plot_shape = "Treatment")
+
+dbrda_phyis = env_sujan_phyis$plot_ordination(plot_color = "Genotype", plot_shape = "Treatment")
+
+dbrda_plant = env_sujan_plant$plot_ordination(plot_color = "Genotype", plot_shape = "Treatment")
+
+dbrda_soil = env_sujan_soil$plot_ordination(plot_color = "Genotype", plot_shape = "Treatment")
+
+ggsave("dbrda.jpeg", plot = dbrda, width = 10, height = 8, dpi = 1000)
+ggsave("dbrda_phyis.jpeg", plot = dbrda_phyis, width = 10, height = 8, dpi = 1000)
+ggsave("dbrda_plant.jpeg", plot = dbrda_plant, width = 10, height = 8, dpi = 1000)
+ggsave("dbrda_soil.jpeg", plot = dbrda_soil, width = 10, height = 8, dpi = 1000)
+
+
+dbrda
+
+
+
+dbrda_trt = env_sujan$plot_ordination(plot_color = "Treatment")
+
+dbrda_trt
+# the main results of RDA are related with the projection and angles between arrows
+# adjust the length of the arrows to show them better
+t1$trans_ordination(adjust_arrow_length = TRUE, max_perc_env = 1.5)
+# t1$res_rda_trans is the transformed result for plotting
+t1$plot_ordination(plot_color = "Group")
+```
+
+
+```{r}
+phyis <- read.csv("physiology_final.csv")
+
+rownames(phyis) <- phyis[, 1]
+
+phyis = phyis[ ,-1]
+
+
+soil = read.csv("soil_final.csv")
+rownames(soil) <- soil[, 1]
+
+soil = soil[ ,-1]
+
+
+
+env_sujan_phyis <- trans_env$new(dataset = meco_dataset, add_data = phyis)
+
+env_sujan_soil <- trans_env$new(dataset = meco_dataset, add_data = soil)
+```
+
+
+```{r}
+# use bray-curtis distance for dbRDA
+env_sujan_phyis$cal_ordination(method = "RDA", use_measure = "bray")
+
+
+# show the orginal results
+env_sujan_phyis$trans_ordination(adjust_arrow_length = TRUE, max_perc_env = 1, max_perc_tax = 1.5, min_perc_env = 0.2, min_perc_tax = 0.2)
+
+
+```
+
+```{r}
+env_sujan_phyis$cal_ordination_anova()
+env_sujan_phyis$cal_ordination_envfit()
+
+
+dbrda_phyis = env_sujan_phyis$plot_ordination(plot_color = "Genotype", plot_shape = "Treatment")
+
+dbrda_soil = env_sujan_soil$plot_ordination(plot_color = "Genotype", plot_shape = "Treatment")
+
+dbrda_phyis
+```
+```{r}
+plant_anova_dbrda = anova.cca (env_sujan_phyis[["res_ordination"]])
+
+plant_anova_dbrda
+```
+
+
+
+```{r}
+# use Genus
+env_sujan_phyis$cal_ordination(method = "RDA", use_measure = "bray", taxa_level = "Phylum")
+
+# select 10 features and adjust the arrow length
+env_sujan_phyis$trans_ordination(show_taxa = 10, adjust_arrow_length = TRUE, max_perc_env = 1.5, max_perc_tax = 1.5, min_perc_env = 0.2, min_perc_tax = 0.2)
+
+# t1$res_rda_trans is the transformed result for plot
+rda_phylum = env_sujan_phyis$plot_ordination(plot_color = "Genotype", plot_shape = "Treatment")
+
+ggsave("rda-phylum.pdf", plot = rda_phylum, width = 6, height = 5, dpi = 1000)
+
+rda_phylum
+```
+
+
+
+## Mantel test can be used to check whether there is significant correlations between environmental variables and distance matrix.
+
+```{r}
+
+env_sujan$cal_mantel(use_measure = "bray")
+
+env_sujan_phyis$cal_mantel(use_measure = "bray")
+
+env_sujan_plant$cal_mantel(use_measure = "bray")
+
+
+
+# return t1$res_mantel
+View(env_sujan[["res_mantel"]])
+
+head(env_sujan$res_mantel)
+
+# Convert the mantel results to a data frame
+mantel_df <- as.data.frame(env_sujan$res_mantel)
+
+# Save the data frame to a CSV file
+write.csv(mantel_df, "mantel_results.csv", row.names = FALSE)
+
+# View the first few rows of the data frame
+head(mantel_df)
+
+```
+
+```{r}
+# mantel test for different groups
+## Genotype
+
+env_sujan$cal_mantel(by_group = "Genotype", use_measure = "bray")
+
+# Convert the mantel results to a data frame
+mantel_gn <- as.data.frame(env_sujan$res_mantel)
+
+# Save the data frame to a CSV file
+write.csv(mantel_gn, "mantel_genotype.csv", row.names = FALSE)
+
+##Treatment
+env_sujan$cal_mantel(by_group = "Treatment", use_measure = "bray")
+
+# Convert the mantel results to a data frame
+mantel_trt <- as.data.frame(env_sujan$res_mantel)
+
+write.csv(mantel_trt, "mantel_treatment.csv", row.names = FALSE)
+
+##Drought_Stages
+env_sujan$cal_mantel(by_group = "Drought_Stage", use_measure = "bray")
+
+# Convert the mantel results to a data frame
+mantel_stage <- as.data.frame(env_sujan$res_mantel)
+
+```
+
+
+```{r}
+# Convert Correlatio.p.value and Significan to numeric if they are not already
+mantel_genotype_16s <- mantel_gn %>%
+  mutate(
+    r_category = cut(`Correlation coefficient`, breaks = c(-Inf, 0.25, 0.5, Inf), 
+                     labels = c("<0.25", "0.25-0.5", ">=0.5"), right = FALSE),
+    p_category = cut(p.value, breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+                     labels = c("<0.001", "0.001-0.01", "0.01-0.05", ">=0.05"), right = FALSE)
+  )
+
+
+# Create the plot
+mantel_gen = ggplot(mantel_genotype_16s, aes(x = `Correlation coefficient`, y = reorder(Variables, `Correlation coefficient`))) +
+  geom_point(aes(color = p_category, size = r_category)) +
+  scale_color_manual(values = c("<0.001" = "darkred", "0.001-0.01" = "red", "0.01-0.05" = "orange", ">=0.05" = "black")) +
+  scale_size_manual(values = c("<0.25" = 2, "0.25-0.5" = 4, ">=0.5" = 6)) +
+  theme_minimal() +
+  labs(
+    title = "Mantel Test Results - Genotype",
+    x = "Mantel's r",
+    y = "Variables",
+    color = "Significance (p-value)",
+    size = "Mantel's r"
+  ) +
+  theme(
+    axis.text.y = element_text(size = 14, color = "black"),
+    axis.text.x = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 16, color = "black"),
+    plot.title = element_text(size = 18, face = "bold", color = "black"),
+    strip.background = element_rect(color = "black", fill = "white"),
+    strip.text = element_text(size = 16, face = "bold", color = "black"),
+    panel.border = element_rect(color = "black", fill = NA)
+  ) +
+  facet_wrap(~by_group)
+
+mantel_gen
+
+ggsave("mantel-genotype_16s.jpeg", plot = mantel_gen, width = 10, height = 8, dpi = 1000)
+```
+
+```{r}
+# Convert Correlatio.p.value and Significan to numeric if they are not already
+mantel_trt_16s <- mantel_trt %>%
+  mutate(
+    r_category = cut(`Correlation coefficient`, breaks = c(-Inf, 0.25, 0.5, Inf), 
+                     labels = c("<0.25", "0.25-0.5", ">=0.5"), right = FALSE),
+    p_category = cut(p.value, breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+                     labels = c("<0.001", "0.001-0.01", "0.01-0.05", ">=0.05"), right = FALSE)
+  )
+
+
+# Create the plot
+mantel_trt = ggplot(mantel_trt_16s, aes(x = `Correlation coefficient`, y = reorder(Variables, `Correlation coefficient`))) +
+  geom_point(aes(color = p_category, size = r_category)) +
+  scale_color_manual(values = c("<0.001" = "darkred", "0.001-0.01" = "red", "0.01-0.05" = "orange", ">=0.05" = "black")) +
+  scale_size_manual(values = c("<0.25" = 2, "0.25-0.5" = 4, ">=0.5" = 6)) +
+  theme_minimal() +
+  labs(
+    title = "Mantel Test Results - Treatment",
+    x = "Mantel's r",
+    y = "Variables",
+    color = "Significance (p-value)",
+    size = "Mantel's r"
+  ) +
+  theme(
+    axis.text.y = element_text(size = 14, color = "black"),
+    axis.text.x = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 16, color = "black"),
+    plot.title = element_text(size = 18, face = "bold", color = "black"),
+    strip.background = element_rect(color = "black", fill = "white"),
+    strip.text = element_text(size = 16, face = "bold", color = "black"),
+    panel.border = element_rect(color = "black", fill = NA)
+  ) +
+  facet_wrap(~by_group)
+
+mantel_trt
+
+ggsave("mantel_trt_16s.jpeg", plot = mantel_trt, width = 10, height = 8, dpi = 1000)
+```
+
+
+
+```{r}
+# Convert Correlatio.p.value and Significan to numeric if they are not already
+mantel_stage_16s <- mantel_stage %>%
+  mutate(
+    r_category = cut(`Correlation coefficient`, breaks = c(-Inf, 0.25, 0.5, Inf), 
+                     labels = c("<0.25", "0.25-0.5", ">=0.5"), right = FALSE),
+    p_category = cut(p.value, breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+                     labels = c("<0.001", "0.001-0.01", "0.01-0.05", ">=0.05"), right = FALSE)
+  )
+
+
+# Create the plot
+mantel_stage = ggplot(mantel_stage_16s, aes(x = `Correlation coefficient`, y = reorder(Variables, `Correlation coefficient`))) +
+  geom_point(aes(color = p_category, size = r_category)) +
+  scale_color_manual(values = c("<0.001" = "darkred", "0.001-0.01" = "red", "0.01-0.05" = "orange", ">=0.05" = "black")) +
+  scale_size_manual(values = c("<0.25" = 2, "0.25-0.5" = 4, ">=0.5" = 6)) +
+  theme_minimal() +
+  labs(
+    title = "Mantel Test Results - Drought Stages",
+    x = "Mantel's r",
+    y = "Variables",
+    color = "Significance (p-value)",
+    size = "Mantel's r"
+  ) +
+  theme(
+    axis.text.y = element_text(size = 14, color = "black"),
+    axis.text.x = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 16, color = "black"),
+    plot.title = element_text(size = 18, face = "bold", color = "black"),
+    strip.background = element_rect(color = "black", fill = "white"),
+    strip.text = element_text(size = 16, face = "bold", color = "black"),
+    panel.border = element_rect(color = "black", fill = NA)
+  ) +
+  facet_wrap(~by_group)
+
+mantel_stage
+
+ggsave("mantel-stage_16s.jpeg", plot = mantel_stage, width = 10, height = 8, dpi = 1000)
+```
+
+## mantel test visualization
+
+```{r}
+# extract two phyla to show the steps
+d1 <- clone(meco_dataset)
+
+d1$tax_table <- d1$tax_table[d1$tax_table$Phylum == "p__Proteobacteria", ]
+d1$tidy_dataset()
+d1$cal_betadiv()
+
+d2 <- clone(meco_dataset)
+d2$tax_table <- d2$tax_table[d2$tax_table$Phylum == "p__Actinobacteria", ]
+d2$tidy_dataset()
+d2$cal_betadiv()
+
+# first perform mantel test
+m1 <- trans_env$new(dataset = d1, add_data = phyis)
+
+m1$cal_mantel(use_measure = "bray", partial_mantel = TRUE)
+
+m2 <- trans_env$new(dataset = d2, add_data = phyis)
+
+m2$cal_mantel(use_measure = "bray", partial_mantel = TRUE)
+# extract a part of the results 
+x1 <- data.frame(spec = "Proteobacteria", m1$res_mantel) %>% .[, c(1, 3, 6, 8)]
+x2 <- data.frame(spec = "Actinobacteria", m2$res_mantel) %>% .[, c(1, 3, 6, 8)]
+
+# rename columns
+colnames(x1) <- colnames(x2) <- c("spec", "env", "r", "p.value")
+# generate interval data
+x1 %<>% dplyr::mutate(rd = cut(r, breaks = c(-Inf, 0.3, 0.6, Inf), labels = c("< 0.3", "0.3 - 0.6", ">= 0.6")),
+    pd = cut(p.value, breaks = c(-Inf, 0.01, 0.05, Inf), labels = c("< 0.01", "0.01 - 0.05", ">= 0.05")))
+
+
+x2 %<>% dplyr::mutate(rd = cut(r, breaks = c(-Inf, 0.3, 0.6, Inf), labels = c("< 0.3", "0.3 - 0.6", ">= 0.6")),
+    pd = cut(p.value, breaks = c(-Inf, 0.01, 0.05, Inf), labels = c("< 0.01", "0.01 - 0.05", ">= 0.05")))
+
+# cobine two tables
+plot_table <- rbind(x1, x2)
+# install ggcor following the steps (https://chiliubio.github.io/microeco_tutorial/intro.html#github-packages)
+library(ggplot2)
+library(ggcor)
+set_scale()
+
+g1 <- quickcor(m1$data_env, type = "upper", cor.test = TRUE, show.diag = FALSE) +
+    geom_square() +
+    geom_mark(sig.thres = 0.05, color = "black", size = 4) + # Removed `markonly` parameter
+    add_link(plot_table, mapping = aes(colour = pd, size = rd)) + # Updated from `anno_link` to `add_link`
+    scale_size_manual(values = c(0.5, 1.5, 3)) + # Ensure scale_size_manual is part of ggplot2
+    scale_colour_manual(values = c("#D95F02", "#1B9E77", "#A2A2A288")) +
+    guides(size = guide_legend(title = "Mantel's r", override.aes = list(colour = "grey35"), order = 2),
+           colour = guide_legend(title = "Mantel's p", override.aes = list(size = 3), order = 1),
+           fill = guide_colorbar(title = "Pearson's r", order = 3)) +
+    geom_diag_label() + # Updated from `add_diag_label` to `geom_diag_label`
+    remove_axis("x") +
+    theme(
+        text = element_text(size = 10), # Change this to adjust overall text size
+        axis.text = element_text(size = 8), # Change this to adjust axis text size
+        legend.text = element_text(size = 8) # Change this to adjust legend text size
+    )
+
+
+g1
+
+ggsave("g1.jpeg", plot = g1, width = 10, height = 8, dpi = 1000)
+
+```
+
+##The correlations between environmental variables and taxa are important in analyzing and inferring the factors affecting community structure. Let’s first perform a correlation heatmap using relative abundance data at Genus level with the cal_cor function. The parameter p_adjust_type can control the p value adjustment type.
+
+```{r}
+# 'p_adjust_type = "Env"' means p adjustment is performed for each environmental variable separately.
+env_sujan$cal_cor(use_data = "Genus", p_adjust_method = "fdr", p_adjust_type = "Env")
+
+# default ggplot2 method with clustering
+plot_cor_genuse = env_sujan$plot_cor(filter_feature = c("", "*", "**"))
+
+ggsave("genus_cor.jpeg", plot = plot_cor_genuse, width = 10, height = 8, dpi = 1000)
+```
+
+##Sometimes, if it needed to study the correlations between environmental variables and taxa for different groups, by_group parameter can be used for this goal
+
+```{r}
+# calculate correlations for different groups using parameter by_group
+
+t1$cal_cor(by_group = "Group", use_data = "other", p_adjust_method = "fdr", other_taxa = t2$res_diff$Taxa[1:40])
+# return t1$res_cor
+t1$plot_cor()
+```
+
+
+# NEW MANTEL TESTS
+
+```{r}
+phyis <- read.csv("phyisology_final.csv")
+rownames(phyis) <- phyis[, 1]
+
+phyis = phyis[ ,-1]
+
+
+soil = read.csv("soil_final.csv")
+rownames(soil) <- soil[, 1]
+
+soil = soil[ ,-1]
+
+
+
+env_sujan_phyis <- trans_env$new(dataset = meco_dataset, add_data = phyis)
+
+env_sujan_soil <- trans_env$new(dataset = meco_dataset, add_data = soil)
+```
+
+```{r}
+env_sujan_phyis$cal_mantel(use_measure = "bray")
+
+env_sujan_soil$cal_mantel(use_measure = "bray")
+
+
+# mantel test for different groups
+## Genotype
+
+env_sujan_phyis$cal_mantel(by_group = "Genotype", use_measure = "bray")
+
+# Convert the mantel results to a data frame
+mantel_phyis_df <- as.data.frame(env_sujan_phyis$res_mantel)
+
+# Save the data frame to a CSV file
+write.csv(mantel_phyis_df, "mantel_genotype_final.csv", row.names = FALSE)
+
+#soil
+env_sujan_soil$cal_mantel(by_group = "Genotype", use_measure = "bray")
+
+# Convert the mantel results to a data frame
+mantel_soil_df <- as.data.frame(env_sujan_soil$res_mantel)
+
+# Save the data frame to a CSV file
+write.csv(mantel_soil_df, "mantel_soil_genotype_final.csv", row.names = FALSE)
+
+##Treatment
+env_sujan_phyis$cal_mantel(by_group = "Treatment", use_measure = "bray")
+
+# Convert the mantel results to a data frame
+mantel_trt_phyis_df <- as.data.frame(env_sujan_phyis$res_mantel)
+
+# Save the data frame to a CSV file
+write.csv(mantel_trt_phyis_df, "mantel_trt_phyis_final.csv", row.names = FALSE)
+
+#soil
+env_sujan_soil$cal_mantel(by_group = "Treatment", use_measure = "bray")
+
+# Convert the mantel results to a data frame
+mantel_soil_df_trt <- as.data.frame(env_sujan_soil$res_mantel)
+
+# Save the data frame to a CSV file
+write.csv(mantel_soil_df_trt, "mantel_trt_soil_final.csv", row.names = FALSE)
+
+# mantel test for different groups
+## Droight stage
+
+env_sujan_phyis$cal_mantel(by_group = "Drought_Stage", use_measure = "bray")
+
+# Convert the mantel results to a data frame
+mantel_phyis_ds_df <- as.data.frame(env_sujan_phyis$res_mantel)
+
+# Save the data frame to a CSV file
+write.csv(mantel_phyis_ds_df, "mantel_stage_final.csv", row.names = FALSE)
+
+#soil
+env_sujan_soil$cal_mantel(by_group = "Genotype", use_measure = "bray")
+
+# Convert the mantel results to a data frame
+mantel_soil_df <- as.data.frame(env_sujan_soil$res_mantel)
+
+# Save the data frame to a CSV file
+write.csv(mantel_soil_df, "mantel_soil_genotype_final.csv", row.names = FALSE)
+
+
+```
+
+
+```{r}
+
+```
+
+
+
+## updated mantel tests
+
+## ES4 - Control - V2 Stage
+
+```{r}
+ES4_C_V2 <- clone(meco_dataset)
+
+# 2) Subset the samples for Genotype=ES4, Treatment=Control, Stage=S1
+ES4_C_V2$sample_table <- subset(
+  ES4_C_V2$sample_table,
+  Genotype == "ES4" & Treatment == "Control" & Drought_Stage == "V2"
+)
+
+# 3) Tidy it
+ES4_C_V2$tidy_dataset()
+
+env_ES4_C_V2_phyis <- trans_env$new(dataset = ES4_C_V2, add_data = phyis)
+
+env_ES4_C_V2_phyis$cal_mantel(use_measure = "bray")
+
+# Convert the mantel results to a data frame
+env_ES4_C_V2_phyis_df <- as.data.frame(env_ES4_C_V2_phyis$res_mantel)
+
+```
+
+## ES4 - Control - V4 Stage
+
+```{r}
+ES4_C_V4 <- clone(meco_dataset)
+
+# 2) Subset the samples for Genotype=ES4, Treatment=Control, Stage=S1
+ES4_C_V4$sample_table <- subset(
+  ES4_C_V4$sample_table,
+  Genotype == "ES4" & Treatment == "Control" & Drought_Stage == "V4"
+)
+
+# 3) Tidy it
+ES4_C_V4$tidy_dataset()
+
+env_ES4_C_V4_phyis <- trans_env$new(dataset = ES4_C_V4, add_data = phyis)
+
+env_ES4_C_V4_phyis$cal_mantel(use_measure = "bray")
+
+# Convert the mantel results to a data frame
+env_ES4_C_V4_phyis_df <- as.data.frame(env_ES4_C_V4_phyis$res_mantel)
+```
+
+## ES4 - Control - R1 Stage
+
+```{r}
+ES4_C_R1 <- clone(meco_dataset)
+
+# 2) Subset the samples for Genotype=ES4, Treatment=Control, Stage=S1
+ES4_C_R1$sample_table <- subset(
+  ES4_C_R1$sample_table,
+  Genotype == "ES4" & Treatment == "Control" & Drought_Stage == "R1"
+)
+
+# 3) Tidy it
+ES4_C_R1$tidy_dataset()
+
+env_ES4_C_R1_phyis <- trans_env$new(dataset = ES4_C_R1, add_data = phyis)
+
+env_ES4_C_R1_phyis$cal_mantel(use_measure = "bray")
+
+# Convert the mantel results to a data frame
+env_ES4_C_R1_phyis_df <- as.data.frame(env_ES4_C_R1_phyis$res_mantel)
+```
+
+
+```{r}
+ES4_C_R4 <- clone(meco_dataset)
+
+# 2) Subset the samples for Genotype=ES4, Treatment=Control, Stage=S1
+ES4_C_R4$sample_table <- subset(
+ES4_C_R4$sample_table,
+  Genotype == "ES4" & Treatment == "Control" & Drought_Stage == "R4"
+)
+
+# 3) Tidy it
+ES4_C_R4$tidy_dataset()
+
+env_ES4_C_R4_phyis <- trans_env$new(dataset = ES4_C_R4, add_data = phyis)
+
+env_ES4_C_R4_phyis$cal_mantel(use_measure = "bray")
+
+# Convert the mantel results to a data frame
+env_ES4_C_R4_phyis_df <- as.data.frame(env_ES4_C_R4_phyis$res_mantel)
+```
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
